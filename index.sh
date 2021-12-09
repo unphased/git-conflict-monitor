@@ -17,21 +17,26 @@ if [ -z "$REPO" ]; then
   exit 1
 fi
 
-STORAGE_PATH="/opt/git-conflict-monitor-repos"
-REPO_METADATA_PATH="/opt/git-conflict-monitor-metadata/$REPO"
-REPO_PATH="$STORAGE_PATH/$REPO"
+REPO_NAME="${REPO##*/}"
+GCM="/opt/git-conflict-monitor"
+STORAGE_PATH="$GCM/repos"
+REPO_METADATA_PATH="$GCM/metadata/$REPO_NAME"
+REPO_RESULTS_PATH="$GCM/results/$REPO_NAME"
+REPO_PATH="$STORAGE_PATH/$REPO_NAME"
 
 echo "REPO_PATH: $REPO_PATH"
 
 if [ ! -d "$REPO_PATH" ]; then
   mkdir -p "$STORAGE_PATH"
   pushd $STORAGE_PATH || exit 2
-  git clone "$REPO"
+  GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone "$REPO"
   popd || exit 2
   mkdir -p "$REPO_METADATA_PATH"
+  touch "$REPO_METADATA_PATH/commit_reported_cache"
+  mkdir -p "$REPO_RESULTS_PATH"
 fi
 
-while sleep 10; do
+while sleep 0.1; do
   # Periodic Processing
   # - only run logic on newly seen pairs of active commits
 
@@ -51,12 +56,14 @@ print(*lines, sep="\n")' | while read -r A_HASH A B_HASH B; do
       if ! grep -q "$COMMIT_PAIR" "$REPO_METADATA_PATH/commit_reported_cache"; then
         echo "Proceeding to check $B($B_HASH) merging into $A($A_HASH):"
         git checkout "$A_HASH"
-        OUTPUT="$(git merge --no-commit --no-ff "$B_HASH" 2>&1)"
+        MERGEOUTPUT="$(git merge --no-commit --no-ff "$B_HASH" 2>&1)"
         MERGEABLE=$?
-        DIFF="$(git diff --cached)"
-        echo "Return code is $MERGEABLE, and the output is: $OUTPUT with diff: $DIFF"
+        echo "$(date) $COMMIT_PAIR ##### >>>$MERGEOUTPUT<<<" >> "$REPO_RESULTS_PATH/output"
+        echo "$(date) $COMMIT_PAIR retcode >>>$MERGEABLE<<<" >> "$REPO_RESULTS_PATH/mergeable"
+        echo "$(date) $COMMIT_PAIR ===== >>>$(git diff --cached)<<<" >> "$REPO_RESULTS_PATH/diff"
         echo "$COMMIT_PAIR" >> "$REPO_METADATA_PATH/commit_reported_cache"
         git merge --abort
       fi
     done
+  sleep 10
 done
