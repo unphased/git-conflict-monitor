@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# helper
+execute () {
+  CTR=1
+  printf "Executing the following:"
+  for arg in "$@"; do
+    printf "\x1b[30m"'$'"%s=\x1b[33m%s\x1b[m " $CTR "$arg"
+    (( CTR ++ ))
+  done
+  echo "" # new line
+  "$@"
+}
+
 # configuration can be overridden by providing environment config file, e.g.:
 # REPO=https://github.com/torvalds/linux
 # TRUNK=develop
@@ -24,31 +36,38 @@ REPO_METADATA_PATH="$GCM/metadata/$REPO_NAME"
 REPO_RESULTS_PATH="$GCM/results/$REPO_NAME"
 REPO_PATH="$STORAGE_PATH/$REPO_NAME"
 
+chown "$(whoami):$(whoami)" $STORAGE_PATH
 echo "REPO_PATH: $REPO_PATH"
 
 if [ ! -d "$REPO_PATH" ]; then
   mkdir -p "$STORAGE_PATH"
   pushd $STORAGE_PATH || exit 2
-  GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone "$REPO"
+  GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" execute git clone "$REPO"
   popd || exit 2
-  mkdir -p "$REPO_METADATA_PATH"
-  touch "$REPO_METADATA_PATH/commit_reported_cache"
-  mkdir -p "$REPO_RESULTS_PATH"
+else
+  echo "Repo $REPO_PATH already exists."
 fi
 
-COLOR=$'\x1b[35m'
-RESET=$'\x1b[35m'
+mkdir -p "$REPO_METADATA_PATH"
+touch "$REPO_METADATA_PATH/commit_reported_cache"
+mkdir -p "$REPO_RESULTS_PATH"
 
-while sleep 0.1; do
+COLOR=$'\x1b[35m'
+COLORSTRONG=$'\x1b[31m'
+RESET=$'\x1b[m'
+
+while true; do
   # Periodic Processing
   # - only run logic on newly seen pairs of active commits
 
   cd "$REPO_PATH" || exit 2
 
+  GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" execute git fetch
+
   {
     git for-each-ref --sort=committerdate refs/remotes/ --format='%(committerdate:short) %(objectname:short) %(refname:short)'
-    echo "$(date '+%Y-%m-%d' --date='4 days ago') FOUR_DAYS_AGO_GIT_CONFLICT_MONITOR_MARKER"
-  } | sort | sed -e '1,/FOUR_DAYS_AGO_GIT_CONFLICT_MONITOR_MARKER/d' | cut -d ' ' -f2,3 |
+    echo "$(date '+%Y-%m-%d' --date='2 days ago') TWO_DAYS_AGO_GIT_CONFLICT_MONITOR_MARKER"
+  } | sort | sed -e '1,/TWO_DAYS_AGO_GIT_CONFLICT_MONITOR_MARKER/d' | cut -d ' ' -f2,3 |
     python3 -c 'from itertools import combinations
 import fileinput
 lines = (line.rstrip() for line in fileinput.input())
@@ -57,16 +76,26 @@ print(*lines, sep="\n")' | while read -r A_HASH A B_HASH B; do
       # check against our cache. only produce a report one time for each pair of commits.
       COMMIT_PAIR="$(echo "$A_HASH $B_HASH" | tr ' ' '\n' | sort | tr '\n' '_')"
       if ! grep -q "$COMMIT_PAIR" "$REPO_METADATA_PATH/commit_reported_cache"; then
-        echo "Proceeding to check $B($B_HASH) merging into $A($A_HASH):"
+        # echo "Proceeding to check $B($B_HASH) merging into $A($A_HASH):"
         git checkout "$A_HASH"
         MERGEOUTPUT="$(git merge --no-commit --no-ff "$B_HASH" 2>&1)"
         MERGEABLE=$?
         echo "$COLOR$(date)$RESET $COMMIT_PAIR ##### >>>$MERGEOUTPUT<<<" >> "$REPO_RESULTS_PATH/output"
+        if [ ! "$MERGEABLE" = 0 ]; then echo "${COLORSTRONG}FAILED TO MERGE $COMMIT_PAIR"; fi
         echo "$COLOR$(date)$RESET $COMMIT_PAIR retcode >>>$MERGEABLE<<<" >> "$REPO_RESULTS_PATH/mergeable"
-        echo "$COLOR$(date)$RESET $COMMIT_PAIR ===== >>>$(git diff --cached)<<<" >> "$REPO_RESULTS_PATH/diff"
+        echo "$COLOR$(date)$RESET $COMMIT_PAIR ===== >>>$(git diff --cached)<<<" >> "$REPO_RESULTS_PATH/diffcached"
+        echo "$COLOR$(date)$RESET $COMMIT_PAIR ----- >>>$(git diff)<<<" >> "$REPO_RESULTS_PATH/diff"
+        echo "$COLOR$(date)$RESET $COMMIT_PAIR =stat= >>>$(git diff --cached --stat)<<<"
+        echo "$COLOR$(date)$RESET $COMMIT_PAIR -stat- >>>$(git diff --stat)<<<"
         echo "$COMMIT_PAIR" >> "$REPO_METADATA_PATH/commit_reported_cache"
-        git merge --abort
+        if [ ! "$MERGEABLE" = "0" ]; then
+          execute git merge --abort
+        else
+          execute git reset --hard HEAD
+          execute git clean -fxd .
+          execute git status
+        fi
       fi
     done
-  sleep 10
+  sleep 20
 done

@@ -13,7 +13,8 @@ USER bot
 
 RUN mkdir -p /home/bot/.ssh \
   && git config --global user.name "git-conflict-monitor" \
-  && git config --global user.email "bot@gcm_bot"
+  && git config --global user.email "bot@gcm_bot" \
+  && git config --global advice.detachedHead false
 
 CMD /opt/git-conflict-monitor.sh
 
