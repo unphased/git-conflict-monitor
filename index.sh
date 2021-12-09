@@ -36,6 +36,9 @@ if [ ! -d "$REPO_PATH" ]; then
   mkdir -p "$REPO_RESULTS_PATH"
 fi
 
+COLOR=$'\x1b[35m'
+RESET=$'\x1b[35m'
+
 while sleep 0.1; do
   # Periodic Processing
   # - only run logic on newly seen pairs of active commits
@@ -43,7 +46,7 @@ while sleep 0.1; do
   cd "$REPO_PATH" || exit 2
 
   {
-    git for-each-ref --sort=committerdate refs/remotes/ --format='%(committerdate:short) %(objectname) %(refname:short)'
+    git for-each-ref --sort=committerdate refs/remotes/ --format='%(committerdate:short) %(objectname:short) %(refname:short)'
     echo "$(date '+%Y-%m-%d' --date='4 days ago') FOUR_DAYS_AGO_GIT_CONFLICT_MONITOR_MARKER"
   } | sort | sed -e '1,/FOUR_DAYS_AGO_GIT_CONFLICT_MONITOR_MARKER/d' | cut -d ' ' -f2,3 |
     python3 -c 'from itertools import combinations
@@ -58,9 +61,9 @@ print(*lines, sep="\n")' | while read -r A_HASH A B_HASH B; do
         git checkout "$A_HASH"
         MERGEOUTPUT="$(git merge --no-commit --no-ff "$B_HASH" 2>&1)"
         MERGEABLE=$?
-        echo "$(date) $COMMIT_PAIR ##### >>>$MERGEOUTPUT<<<" >> "$REPO_RESULTS_PATH/output"
-        echo "$(date) $COMMIT_PAIR retcode >>>$MERGEABLE<<<" >> "$REPO_RESULTS_PATH/mergeable"
-        echo "$(date) $COMMIT_PAIR ===== >>>$(git diff --cached)<<<" >> "$REPO_RESULTS_PATH/diff"
+        echo "$COLOR$(date)$RESET $COMMIT_PAIR ##### >>>$MERGEOUTPUT<<<" >> "$REPO_RESULTS_PATH/output"
+        echo "$COLOR$(date)$RESET $COMMIT_PAIR retcode >>>$MERGEABLE<<<" >> "$REPO_RESULTS_PATH/mergeable"
+        echo "$COLOR$(date)$RESET $COMMIT_PAIR ===== >>>$(git diff --cached)<<<" >> "$REPO_RESULTS_PATH/diff"
         echo "$COMMIT_PAIR" >> "$REPO_METADATA_PATH/commit_reported_cache"
         git merge --abort
       fi
