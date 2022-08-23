@@ -8,5 +8,5 @@ See https://softwareengineering.stackexchange.com/questions/412628/proactive-git
 - If a conflict is detected, emails are sent to both relevant authors (open question: is it 
     possible to alert only the more recently contributing author?)
 
-This service needs to be used with care because it is easy to generate unwanted spam. My thesis is 
+This service needs to be used with care because it is easy to generate unwanted spam. My hope is 
 that the service could provide more value than the annoyance that it may generate.
